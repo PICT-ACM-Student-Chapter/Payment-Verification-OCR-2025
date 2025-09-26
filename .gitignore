@@ -183,6 +183,8 @@ TransactionReport.csv
 TransactionReport.xlsx
 TransactionReport_*.csv
 TransactionReport_*.xlsx
+TransactionReport.pdf
+TransactionReport_*.pdf
 processed_transactions.csv
 processed_transactions.xlsx
 verified_transactions.csv

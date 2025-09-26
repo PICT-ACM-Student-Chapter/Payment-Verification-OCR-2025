@@ -169,9 +169,9 @@ if page == "🏠 Main Dashboard":
         st.markdown("### Transaction Reports")
         uploaded_files = st.file_uploader(
             "Upload Transaction Reports",
-            type=["csv", "xlsx"],
+            type=["csv", "xlsx", "pdf"],
             accept_multiple_files=True,
-            help="Upload CSV or Excel files containing transaction reports to verify against (Max 200MB per file)"
+            help="Upload CSV, Excel, or PDF files containing transaction reports to verify against (Max 200MB per file)"
         )
         
         # Column selection for CSV/Excel files
@@ -183,11 +183,11 @@ if page == "🏠 Main Dashboard":
             
             # Show file list
             for i, file in enumerate(uploaded_files):
-                file_type = ""
+                file_type = "📊" if file.name.endswith(('.csv', '.xlsx')) else "📄" if file.name.endswith('.pdf') else ""
                 st.write(f"{file_type} {file.name}")
             
             # Check if any CSV/Excel files are uploaded for column selection
-            csv_excel_files = uploaded_files  # All files are now CSV/Excel
+            csv_excel_files = [f for f in uploaded_files if f.name.endswith(('.csv', '.xlsx'))]
             
             if csv_excel_files:
                 st.markdown("#### Column Configuration")
@@ -286,6 +286,10 @@ if page == "🏠 Main Dashboard":
                                 f.write(file.getbuffer())
                         elif file.name.endswith('.csv'):
                             filename = f"TransactionReport_{i}.csv" if len(uploaded_files) > 1 else "TransactionReport.csv"
+                            with open(filename, "wb") as f:
+                                f.write(file.getbuffer())
+                        elif file.name.endswith('.pdf'):
+                            filename = f"TransactionReport_{i}.pdf" if len(uploaded_files) > 1 else "TransactionReport.pdf"
                             with open(filename, "wb") as f:
                                 f.write(file.getbuffer())
                     
@@ -454,7 +458,7 @@ elif page == "ℹ️ About":
     
     ### 📁 File Requirements
     - **Input CSV/Excel**: Must contain 'screenshots' column with image URLs (Max 200MB per file)
-    - **Transaction Reports**: CSV or Excel files with official transaction reports for verification (Max 200MB per file)
+    - **Transaction Reports**: CSV, Excel, or PDF files with official transaction reports for verification (Max 200MB per file)
     """)
     
     # System information
@@ -473,7 +477,7 @@ elif page == "ℹ️ About":
             
         # Check for transaction report files (single or multiple)
         transaction_files = []
-        for ext in ["csv", "xlsx"]:
+        for ext in ["csv", "xlsx", "pdf"]:
             if os.path.exists(f"TransactionReport.{ext}"):
                 transaction_files.append(f"TransactionReport.{ext}")
             # Check for numbered files
