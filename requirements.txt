@@ -16,12 +16,11 @@ pytesseract>=0.3.10
 # HTTP requests for downloading images
 requests>=2.31.0
 
-# YOLO object detection (optional)
-# Pin Ultralytics to match runtime (YOLOv12)
-ultralytics==8.3.63
+# YOLOv12 object detection
+git+https://github.com/sunsmarterjie/yolov12.git
 
-# PyTorch CPU
-torch==2.7.0
+# Required for ultralytics (Hugging Face model hub integration)
+huggingface_hub
 
 # Web UI framework
 streamlit>=1.28.0
