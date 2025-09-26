@@ -17,7 +17,11 @@ pytesseract>=0.3.10
 requests>=2.31.0
 
 # YOLO object detection (optional)
-ultralytics>=8.0.0
+# Pin Ultralytics to match runtime (YOLOv12)
+ultralytics==8.3.63
+
+# PyTorch CPU
+torch==2.7.0
 
 # Web UI framework
 streamlit>=1.28.0
@@ -29,7 +33,7 @@ Pillow>=9.0.0
 # json (built-in)
 
 # File operations
-pathlib
+# pathlib is built-in in modern Python; no backport needed
 
 # PDF parsing for transaction reports
 pdfplumber>=0.11.0
