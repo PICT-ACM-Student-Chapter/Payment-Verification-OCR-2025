@@ -152,6 +152,11 @@ if page == "🏠 Main Dashboard":
             type=["csv", "xlsx"],
             help="Upload the CSV or Excel file containing user registration data with screenshot URLs (Max 200MB per file)"
         )
+        
+        # Registration column configuration
+        reg_transaction_id_column = None
+        use_fallback = False
+        
         if uploaded_csv is not None:
             st.success(f"✅ Uploaded: {uploaded_csv.name}")
             # Show preview
@@ -162,6 +167,31 @@ if page == "🏠 Main Dashboard":
                     df_preview = pd.read_csv(uploaded_csv)
                 st.markdown("**Preview of uploaded data:**")
                 st.dataframe(df_preview.head(), use_container_width=True)
+                
+                # Registration file column configuration
+                st.markdown("#### Registration Data Configuration")
+                available_reg_columns = list(df_preview.columns)
+                
+                reg_col_a, reg_col_b = st.columns(2)
+                with reg_col_a:
+                    reg_transaction_id_column = st.selectbox(
+                        "Transaction ID Column (in registration data):",
+                        options=available_reg_columns,
+                        index=0 if 'transactionid' not in [col.lower() for col in available_reg_columns] else [col.lower() for col in available_reg_columns].index('transactionid'),
+                        help="Select the column containing transaction IDs that users filled in registration form"
+                    )
+                
+                with reg_col_b:
+                    use_fallback = st.checkbox(
+                        "Use as fallback when OCR fails",
+                        value=True,
+                        help="When YOLO/OCR cannot extract transaction ID from screenshot, use the ID from registration form"
+                    )
+                
+                if reg_transaction_id_column:
+                    st.markdown(f"**Preview of selected column '{reg_transaction_id_column}':**")
+                    st.write(df_preview[reg_transaction_id_column].head().tolist())
+                    
             except:
                 st.warning("Could not preview file")
 
@@ -293,12 +323,20 @@ if page == "🏠 Main Dashboard":
                             with open(filename, "wb") as f:
                                 f.write(file.getbuffer())
                     
-                    # Save column configuration for CSV/Excel files
+                    # Save column configuration for CSV/Excel files and registration settings
+                    column_config = {}
                     if rrn_column and amount_column:
-                        column_config = {
+                        column_config.update({
                             "rrn_column": rrn_column,
                             "amount_column": amount_column
-                        }
+                        })
+                    if reg_transaction_id_column:
+                        column_config.update({
+                            "reg_transaction_id_column": reg_transaction_id_column,
+                            "use_fallback": use_fallback
+                        })
+                    
+                    if column_config:
                         import json
                         with open("column_config.json", "w") as f:
                             json.dump(column_config, f)
@@ -347,7 +385,10 @@ if page == "🏠 Main Dashboard":
                     
                     with col4:
                         no_id_count = len(df_results[df_results['Verification'] == 'No ID extracted'])
+                        registration_duplicate_count = len(df_results[df_results['Verification'] == 'Registration Duplicate'])
                         st.metric("No ID Extracted", no_id_count)
+                        if registration_duplicate_count > 0:
+                            st.metric("Registration Duplicates", registration_duplicate_count)
                     
                     # Results table
                     st.markdown("### Detailed Results")
@@ -401,7 +442,7 @@ elif page == "📊 Results":
         st.markdown("### 🔍 Filter Results")
         filter_option = st.selectbox(
             "Filter by verification status:",
-            ["All", "Verified", "Not Verified", "No ID extracted"]
+            ["All", "Verified", "Not Verified", "No ID extracted", "Registration Duplicate", "Duplicate"]
         )
         
         if filter_option != "All":
@@ -433,14 +474,20 @@ elif page == "ℹ️ About":
     
     ### 🔧 How It Works
     1. **Upload Registration Data**: CSV or Excel file containing user information and screenshot URLs
-    2. **Upload Transaction Reports**: CSV or Excel files with official transaction records
-    3. **AI Processing**: 
+    2. **Configure Columns**: Select which column contains transaction IDs from registration forms
+    3. **Upload Transaction Reports**: CSV or Excel files with official transaction records
+    4. **AI Processing**: 
        - Downloads screenshots from URLs
        - Uses YOLO model to detect transaction ID regions (if available)
        - Falls back to full-image OCR if no model is available
        - Extracts transaction IDs using OCR
-    4. **Verification**: Matches extracted IDs with official transaction records
-    5. **Results**: Generates comprehensive verification report
+       - **Fallback Mechanism**: If OCR fails, uses transaction ID from registration form
+    5. **Duplicate Detection**:
+       - Identifies duplicate transaction IDs in registration forms
+       - Marks users who used the same transaction ID as "Registration Duplicate"
+       - Detects previously verified transaction IDs
+    6. **Verification**: Matches extracted IDs with official transaction records
+    7. **Results**: Generates comprehensive verification report with multiple status categories
     
     ### 🛠️ Technology Stack
     - **Python**: Core programming language
@@ -455,6 +502,14 @@ elif page == "ℹ️ About":
     - **Google Pay**: Transaction IDs (e.g., AXIS1234567890)
     - **Paytm**: Reference numbers (12-15 digits)
     - **Amazon Pay**: Bank Reference IDs
+    
+    ### 🏷️ Verification Status Types
+    - **Verified**: Transaction ID found in official reports and not previously used
+    - **Not Verified**: Transaction ID not found in official reports  
+    - **No ID extracted**: Could not extract transaction ID from screenshot or registration
+    - **Registration Duplicate**: Multiple users submitted the same transaction ID in registration
+    - **Duplicate**: Transaction ID was already verified in a previous session
+    - **Amount mismatch**: Transaction ID found but amount doesn't match (if available)
     
     ### 📁 File Requirements
     - **Input CSV/Excel**: Must contain 'screenshots' column with image URLs (Max 200MB per file)

@@ -1,4 +1,3 @@
-# Imports
 import cv2
 import numpy as np
 import re
@@ -9,6 +8,7 @@ import os
 import warnings
 import traceback
 import gc
+import json
 
 # Suppress warnings that might cause issues
 warnings.filterwarnings('ignore')
@@ -25,6 +25,16 @@ OUTPUT_PATH = "processed_transactions.csv"  # or .xlsx
 # Global model variable
 model = None
 use_yolo = False
+
+def load_column_config():
+    """Load column configuration from JSON file if it exists"""
+    try:
+        if os.path.exists("column_config.json"):
+            with open("column_config.json", "r") as f:
+                return json.load(f)
+    except Exception as e:
+        print(f"Warning: Could not load column config: {e}")
+    return {}
 
 def load_yolo_model():
     """
@@ -201,7 +211,63 @@ def process_image_url(image_url):
         gc.collect()
 
 
+def clean_transaction_id(transaction_id):
+    """
+    Clean and validate transaction ID from user input.
+    Handles various formats like UTR numbers, transaction IDs, etc.
+    
+    Args:
+        transaction_id: Raw transaction ID from user input
+    
+    Returns:
+        str or None: Cleaned transaction ID if valid, None otherwise
+    """
+    if pd.isna(transaction_id) or not transaction_id:
+        return None
+    
+    # Convert to string and clean
+    transaction_id = str(transaction_id).strip()
+    
+    # Remove common prefixes and whitespace
+    transaction_id = re.sub(r'^(UTR|TXN|REF|ID)\s*[:\-#]?\s*', '', transaction_id, flags=re.IGNORECASE)
+    
+    # Extract only alphanumeric characters
+    clean_id = re.sub(r'[^A-Za-z0-9]', '', transaction_id)
+    
+    # Validate length (transaction IDs are typically 8-25 characters)
+    if len(clean_id) >= 8 and len(clean_id) <= 25:
+        # Check if it's purely numeric and meets 12-digit transaction ID pattern
+        if re.match(r'^\d{12}$', clean_id):
+            return clean_id
+        # Or if it's a longer alphanumeric ID (like PhonePe T-series)
+        elif len(clean_id) >= 12:
+            return clean_id
+    
+    return None
+
+
 def extract_transaction_details(text):
+    """
+    Extracts a 12-digit transaction ID from OCR text.
+
+    Args:
+        text (str): OCR-extracted text from the transaction screenshot.
+
+    Returns:
+        transaction_id (str or None): 12-digit transaction ID if found, else None.
+    """
+    lines = text.split("\n")
+    transaction_id = None
+    print(lines)
+    if len(lines) == 2:
+        transaction_id = lines[0][-12:]
+    elif len(lines) == 3:
+        transaction_id = lines[1]
+    pattern = r"^\d{12}$"
+    if re.match(pattern, transaction_id):
+        return transaction_id
+    else:
+        return None
     """
     Extracts a 12-digit transaction ID from OCR text.
 
@@ -228,6 +294,7 @@ def extract_transaction_details(text):
 def process_transactions(reg_path):
     """
     Processes an input CSV/Excel file to extract transaction IDs from screenshots.
+    If OCR/YOLO fails, uses fallback transaction ID from registration data.
 
     Args:
         reg_path (str): Path to the input CSV or Excel file.
@@ -235,19 +302,60 @@ def process_transactions(reg_path):
     Returns:
         reg (pd.DataFrame): DataFrame with an added 'extracted_transaction_id' column.
     """
+    # Load column configuration
+    config = load_column_config()
+    
     # Check file extension and read accordingly
     if reg_path.endswith('.xlsx'):
         reg = pd.read_excel(reg_path, dtype=str)
     else:
         reg = pd.read_csv(reg_path, dtype=str)
     
+    # Get column names from config
+    reg_transaction_id_column = config.get('reg_transaction_id_column', 'transactionId')
+    use_fallback = config.get('use_fallback', True)
+    
+    # Check if the specified column exists
+    if reg_transaction_id_column not in reg.columns:
+        # Try to find a similar column (case insensitive)
+        available_columns = {col.lower(): col for col in reg.columns}
+        alt_column = available_columns.get(reg_transaction_id_column.lower())
+        if alt_column:
+            reg_transaction_id_column = alt_column
+        else:
+            print(f"Warning: Column '{reg_transaction_id_column}' not found. Available columns: {list(reg.columns)}")
+            print("Fallback mechanism will not be used.")
+            use_fallback = False
+    
     # Process row by row to limit memory; do not retain image arrays
     extracted_ids = []
     urls = reg["screenshot"].fillna("").tolist()
+    
+    # Get registration transaction IDs for fallback
+    reg_transaction_ids = []
+    if use_fallback and reg_transaction_id_column in reg.columns:
+        reg_transaction_ids = reg[reg_transaction_id_column].fillna("").tolist()
+        print(f"Using fallback transaction IDs from column: {reg_transaction_id_column}")
+    
     total = len(urls)
+    
     for idx, url in enumerate(urls, start=1):
         print(f"[PROCESS] {idx}/{total} url={url}")
-        extracted_ids.append(process_image_url(url))
+        
+        # Try OCR/YOLO extraction first
+        extracted_id = process_image_url(url)
+        
+        # If OCR failed and fallback is enabled, use registration transaction ID
+        if extracted_id is None and use_fallback and idx <= len(reg_transaction_ids):
+            fallback_id = clean_transaction_id(reg_transaction_ids[idx-1])
+            if fallback_id:
+                print(f"[FALLBACK] OCR failed, using registration ID: {fallback_id}")
+                extracted_id = fallback_id
+            else:
+                print(f"[FALLBACK] Invalid registration ID: {reg_transaction_ids[idx-1]}")
+        
+        extracted_ids.append(extracted_id)
+    
     reg["extracted_transaction_id"] = extracted_ids
     return reg
 
@@ -260,7 +368,9 @@ def save(df, output_filename="processed_transactions.csv"):
         df (pd.DataFrame): DataFrame to save.
         output_filename (str): Output filename (CSV or Excel).
     """
-    df["extracted_transaction_id"] = df["extracted_transaction_id"].astype("Int64")
+    # Keep transaction IDs as strings to support alphanumeric IDs like MPIB3332191571
+    df["extracted_transaction_id"] = df["extracted_transaction_id"].astype(str)
+    df["extracted_transaction_id"] = df["extracted_transaction_id"].replace('nan', None)
     
     # Save based on file extension
     if output_filename.endswith('.xlsx'):
