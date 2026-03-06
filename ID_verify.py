@@ -88,28 +88,6 @@ def check_registration_duplicates(input_df):
         del df_copy['_clean_reg_id']
     
     return input_df
-    """Load column configuration from JSON file
-
-    Returns a dict with optional overrides. Sensible defaults are provided so the
-    rest of the pipeline can operate without a config file.  Keys:
-    - rrn_column: explicit RRN/UTR column name if available
-    - amount_column: amount column name if available
-    - details_column: column containing narrative/details if rrn_column is absent
-    """
-    defaults = {
-        "rrn_column": "rrn",
-        "amount_column": "amount",
-        "details_column": "details",
-    }
-    try:
-        if os.path.exists("column_config.json"):
-            with open("column_config.json", "r") as f:
-                config = json.load(f)
-                defaults.update({k: v for k, v in config.items() if v})
-    except Exception:
-        # Fall back to defaults silently
-        pass
-    return defaults
 
 
 # ------------------------ Helpers for column + regex parsing -----------------
@@ -228,10 +206,10 @@ def _parse_details_rows(df: pd.DataFrame, details_col: str, amount_col_hint: str
     out["rrn"] = details_series.apply(_extract_rrn_from_text_string)
 
     if amount_col:
-        out["amount"] = df[amount_col].apply(_clean_amount).astype("Int32")
+        out["amount"] = pd.to_numeric(df[amount_col].apply(_clean_amount), errors="coerce").astype("Int64")
     else:
         # Attempt amount extraction from details text as a fallback
-        out["amount"] = details_series.apply(_clean_amount).astype("Int32")
+        out["amount"] = pd.to_numeric(details_series.apply(_clean_amount), errors="coerce").astype("Int64")
 
     out = out.dropna(subset=["rrn"])  # Require RRN for verification
     return out
@@ -264,15 +242,18 @@ def input_report():
     for file_path, file_type in found_files:
         print(f"Processing: {file_path}")
         
-        if file_type == "xlsx":
-            df = process_excel_report(file_path)
-        elif file_type == "csv":
-            df = process_csv_report(file_path)
-        elif file_type == "pdf":
-            df = process_pdf_report(file_path)
-        
-        if not df.empty:
-            all_dfs.append(df)
+        try:
+            if file_type == "xlsx":
+                df = process_excel_report(file_path)
+            elif file_type == "csv":
+                df = process_csv_report(file_path)
+            elif file_type == "pdf":
+                df = process_pdf_report(file_path)
+            
+            if not df.empty:
+                all_dfs.append(df)
+        except Exception as e:
+            print(f"⚠️ Skipping {file_path}: {e}")
     
     if not all_dfs:
         raise ValueError("No valid data found in transaction report files")
@@ -412,9 +393,21 @@ def process_pdf_report(pdf_path):
         return _parse_details_rows(df, details_col, amount_col_hint=amount_col)
 
     # As a last resort, try to derive from any text-like column
-    text_like_cols = [c for c in df.columns if df[c].astype(str).str.contains("UTR", case=False, na=False).any()]
-    if text_like_cols:
-        return _parse_details_rows(df, text_like_cols[0], amount_col_hint=amount_col)
+    # Deduplicate columns to avoid DataFrame-vs-Series issues (common with
+    # pdfplumber extracting tables that have merged or None column headers)
+    seen_cols = set()
+    for idx, c in enumerate(df.columns):
+        col_key = str(c)
+        if col_key in seen_cols:
+            continue
+        seen_cols.add(col_key)
+        col_series = df.iloc[:, idx]  # always yields a Series
+        if col_series.astype(str).str.contains("UTR|UPI", case=False, na=False).any():
+            return _parse_details_rows(
+                df.iloc[:, [idx]].rename(columns={df.columns[idx]: "details"}),
+                "details",
+                amount_col_hint=amount_col,
+            )
 
     raise ValueError(f"Could not identify RRN/UTR or Details columns in PDF table. Available columns: {list(df.columns)}")
 

@@ -268,27 +268,6 @@ def extract_transaction_details(text):
         return transaction_id
     else:
         return None
-    """
-    Extracts a 12-digit transaction ID from OCR text.
-
-    Args:
-        text (str): OCR-extracted text from the transaction screenshot.
-
-    Returns:
-        transaction_id (str or None): 12-digit transaction ID if found, else None.
-    """
-    lines = text.split("\n")
-    transaction_id = None
-    print(lines)
-    if len(lines) == 2:
-        transaction_id = lines[0][-12:]
-    elif len(lines) == 3:
-        transaction_id = lines[1]
-    pattern = r"^\d{12}$"
-    if re.match(pattern, transaction_id):
-        return transaction_id
-    else:
-        return None
 
 
 def process_transactions(reg_path):
