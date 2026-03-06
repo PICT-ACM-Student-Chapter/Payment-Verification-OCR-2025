@@ -1,0 +1,44 @@
+# Payment Verification OCR Project Dependencies
+
+# Core data processing
+pandas>=1.5.0
+
+# Excel file support
+openpyxl>=3.0.0
+
+# Computer vision and image processing
+opencv-python>=4.8.0
+numpy>=1.24.0
+
+# OCR (Optical Character Recognition)
+pytesseract>=0.3.10
+
+# HTTP requests for downloading images
+requests>=2.31.0
+
+# YOLOv12 object detection
+git+https://github.com/sunsmarterjie/yolov12.git
+
+# Required for ultralytics (Hugging Face model hub integration)
+huggingface_hub
+
+# Web UI framework
+streamlit>=1.28.0
+
+# Image processing for UI
+Pillow>=9.0.0
+
+# JSON handling (built-in, but good to mention)
+# json (built-in)
+
+# File operations
+# pathlib is built-in in modern Python; no backport needed
+
+# PDF parsing for transaction reports
+pdfplumber>=0.11.0
+PyPDF2>=3.0.0
+
+# Note: pytesseract requires Tesseract OCR to be installed on the system
+# For macOS: brew install tesseract
+# For Ubuntu/Debian: sudo apt-get install tesseract-ocr
+# For Windows: Download from https://github.com/UB-Mannheim/tesseract/wiki 

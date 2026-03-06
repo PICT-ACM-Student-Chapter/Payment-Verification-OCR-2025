@@ -172,3 +172,32 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+#Mac OS files
+.DS_Store
+
+# Streamlit UI generated files
+input.csv
+input.xlsx
+TransactionReport.csv
+TransactionReport.xlsx
+TransactionReport_*.csv
+TransactionReport_*.xlsx
+TransactionReport.pdf
+TransactionReport_*.pdf
+processed_transactions.csv
+processed_transactions.xlsx
+verified_transactions.csv
+verified_transactions.xlsx
+verified_ID.csv
+verified_ID.xlsx
+column_config.json
+temp_model.pt
+
+# YOLO model files (optional - uncomment if you don't want to track the model)
+# model.pt
+# *.pt
+
+# Temporary files
+*.tmp
+*.temp
