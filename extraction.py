@@ -1,14 +1,14 @@
-import cv2
-import numpy as np
-import re
-import pytesseract
-import requests
-import pandas as pd
-import os
-import warnings
-import traceback
 import gc
 import json
+import os
+import re
+import warnings
+
+import cv2
+import numpy as np
+import pandas as pd
+import pytesseract
+import requests
 
 # Suppress warnings that might cause issues
 warnings.filterwarnings('ignore')
@@ -62,16 +62,16 @@ def load_yolo_model():
         
     except Exception as e:
         error_msg = str(e)
-        print(f"❌ YOLO model loading failed: {error_msg}")
+        print(f"[x] YOLO model loading failed: {error_msg}")
         
         # Check for specific compatibility errors
         if "'AAttn' object has no attribute 'qkv'" in error_msg:
-            print("⚠️ This is a known compatibility issue with ultralytics versions.")
+            print("[i] This is a known compatibility issue with ultralytics versions.")
             print("   Using fallback OCR method without YOLO cropping.")
         elif "CUDA" in error_msg or "GPU" in error_msg:
-            print("⚠️ GPU/CUDA issue detected. Using fallback OCR method.")
+            print("[i] GPU/CUDA issue detected. Using fallback OCR method.")
         else:
-            print("⚠️ Unknown YOLO error. Using fallback OCR method.")
+            print("[i] Unknown YOLO error. Using fallback OCR method.")
         
         model = None
         use_yolo = False

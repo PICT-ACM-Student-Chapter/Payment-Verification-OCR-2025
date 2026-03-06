@@ -1,21 +1,21 @@
 # This file verifies whether the ID extracted exists in given input transaction records
 # It also verifies for duplicate transaction ID
 # The input file is the PDF file to be sent by the teacher
-import pandas as pd
-from pathlib import Path
-import os
-import json
 import glob
+import json
+import os
 import re
-import numpy as np
 from collections import Counter
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
 
 # File locations:
 TRANSACTION_REPORT_PATH = "TransactionReport.pdf"
-EXTRACTED_DATA_PATH = "processed_transactions.csv"  # or .xlsx
-OUTPUT_PATH = "verified_transactions.csv"  # or .xlsx
-VERIFIED_DB_PATH = "verified_ID.csv"  # or .xlsx
-# ---
+EXTRACTED_DATA_PATH = "processed_transactions.csv"
+OUTPUT_PATH = "verified_transactions.csv"
+VERIFIED_DB_PATH = "verified_ID.csv"
 
 
 def load_column_config():
@@ -34,63 +34,68 @@ def check_registration_duplicates(input_df):
     Checks for duplicate transaction IDs in registration data and marks them as unverified.
     If two or more people put the same transaction ID in their registration form,
     all of them should be marked as 'Registration Duplicate'.
-    
+
     Args:
         input_df (pd.DataFrame): DataFrame with extracted transaction IDs
-    
+
     Returns:
         pd.DataFrame: DataFrame with duplicate registration IDs marked
     """
     # Load column configuration to get registration transaction ID column
     config = load_column_config()
-    reg_transaction_id_column = config.get('reg_transaction_id_column', 'transactionId')
-    
+    reg_transaction_id_column = config.get("reg_transaction_id_column", "transactionId")
+
     # Check if the registration transaction ID column exists
     if reg_transaction_id_column not in input_df.columns:
-        print(f"Registration transaction ID column '{reg_transaction_id_column}' not found. Skipping registration duplicate check.")
+        print(
+            f"Registration transaction ID column '{reg_transaction_id_column}' not found. Skipping registration duplicate check."
+        )
         return input_df
-    
+
     # Clean and normalize registration transaction IDs
     def clean_reg_id(tid):
         if pd.isna(tid) or not tid:
             return None
         tid_str = str(tid).strip()
         # Remove common prefixes and normalize
-        tid_clean = re.sub(r'^(UTR|TXN|REF|ID)\s*[:\-#]?\s*', '', tid_str, flags=re.IGNORECASE)
-        tid_clean = re.sub(r'[^A-Za-z0-9]', '', tid_clean)
+        tid_clean = re.sub(r"^(UTR|TXN|REF|ID)\s*[:\-#]?\s*", "", tid_str, flags=re.IGNORECASE)
+        tid_clean = re.sub(r"[^A-Za-z0-9]", "", tid_clean)
         return tid_clean if len(tid_clean) >= 8 else None
-    
+
     # Create a copy to avoid modifying the original
     df_copy = input_df.copy()
-    df_copy['_clean_reg_id'] = df_copy[reg_transaction_id_column].apply(clean_reg_id)
-    
+    df_copy["_clean_reg_id"] = df_copy[reg_transaction_id_column].apply(clean_reg_id)
+
     # Count occurrences of each non-null registration transaction ID
-    reg_id_counts = Counter([rid for rid in df_copy['_clean_reg_id'].tolist() if rid is not None])
-    
+    reg_id_counts = Counter([rid for rid in df_copy["_clean_reg_id"].tolist() if rid is not None])
+
     # Find duplicate registration IDs (appearing more than once)
     duplicate_reg_ids = {rid for rid, count in reg_id_counts.items() if count > 1}
-    
+
     if duplicate_reg_ids:
-        print(f"Found {len(duplicate_reg_ids)} duplicate registration transaction IDs affecting {sum(reg_id_counts[rid] for rid in duplicate_reg_ids)} records")
-        
+        print(
+            f"Found {len(duplicate_reg_ids)} duplicate registration transaction IDs affecting {sum(reg_id_counts[rid] for rid in duplicate_reg_ids)} records"
+        )
+
         # Mark all records with duplicate registration IDs as 'Registration Duplicate'
-        duplicate_mask = df_copy['_clean_reg_id'].isin(duplicate_reg_ids)
-        input_df.loc[duplicate_mask, 'Verification'] = 'Registration Duplicate'
-        
+        duplicate_mask = df_copy["_clean_reg_id"].isin(duplicate_reg_ids)
+        input_df.loc[duplicate_mask, "Verification"] = "Registration Duplicate"
+
         # Log the duplicates for debugging
         for dup_id in duplicate_reg_ids:
-            affected_records = df_copy[df_copy['_clean_reg_id'] == dup_id]
-            names = affected_records.apply(lambda row: f"{row.get('firstName', 'Unknown')} {row.get('lastName', '')}".strip(), axis=1).tolist()
+            affected_records = df_copy[df_copy["_clean_reg_id"] == dup_id]
+            names = affected_records.apply(
+                lambda row: f"{row.get('firstName', 'Unknown')} {row.get('lastName', '')}".strip(),
+                axis=1,
+            ).tolist()
             print(f"Duplicate registration ID '{dup_id}' used by: {', '.join(names)}")
-    
+
     # Clean up temporary column
-    if '_clean_reg_id' in df_copy.columns:
-        del df_copy['_clean_reg_id']
-    
+    if "_clean_reg_id" in df_copy.columns:
+        del df_copy["_clean_reg_id"]
+
     return input_df
 
-
-# ------------------------ Helpers for column + regex parsing -----------------
 
 DETAILS_CANDIDATES = [
     "details",
@@ -206,42 +211,47 @@ def _parse_details_rows(df: pd.DataFrame, details_col: str, amount_col_hint: str
     out["rrn"] = details_series.apply(_extract_rrn_from_text_string)
 
     if amount_col:
-        out["amount"] = pd.to_numeric(df[amount_col].apply(_clean_amount), errors="coerce").astype("Int64")
+        out["amount"] = pd.to_numeric(df[amount_col].apply(_clean_amount), errors="coerce").astype(
+            "Int64"
+        )
     else:
         # Attempt amount extraction from details text as a fallback
-        out["amount"] = pd.to_numeric(details_series.apply(_clean_amount), errors="coerce").astype("Int64")
+        out["amount"] = pd.to_numeric(details_series.apply(_clean_amount), errors="coerce").astype(
+            "Int64"
+        )
 
     out = out.dropna(subset=["rrn"])  # Require RRN for verification
     return out
 
+
 def input_report():
     """Processes all transaction report files and combines them into a single dataframe"""
     all_dfs = []
-    
+
     # Check for single files
     single_files = [
-        ("TransactionReport.xlsx", "xlsx"), 
+        ("TransactionReport.xlsx", "xlsx"),
         ("TransactionReport.csv", "csv"),
-        ("TransactionReport.pdf", "pdf")
+        ("TransactionReport.pdf", "pdf"),
     ]
-    
+
     # Check for numbered files
     numbered_files = []
     for ext in ["xlsx", "csv", "pdf"]:
         numbered_files.extend([(f, ext) for f in glob.glob(f"TransactionReport_*.{ext}")])
-    
+
     # Combine all found files
     found_files = [(f, ext) for f, ext in single_files if os.path.exists(f)]
     found_files.extend(numbered_files)
-    
+
     if not found_files:
         raise FileNotFoundError("No transaction report files found (CSV, Excel, or PDF)")
-    
+
     print(f"Processing {len(found_files)} transaction report file(s)...")
-    
+
     for file_path, file_type in found_files:
         print(f"Processing: {file_path}")
-        
+
         try:
             if file_type == "xlsx":
                 df = process_excel_report(file_path)
@@ -249,23 +259,24 @@ def input_report():
                 df = process_csv_report(file_path)
             elif file_type == "pdf":
                 df = process_pdf_report(file_path)
-            
+
             if not df.empty:
                 all_dfs.append(df)
         except Exception as e:
             print(f"⚠️ Skipping {file_path}: {e}")
-    
+
     if not all_dfs:
         raise ValueError("No valid data found in transaction report files")
-    
+
     # Combine all dataframes
     combined_df = pd.concat(all_dfs, ignore_index=True)
-    
+
     # Remove duplicates based on RRN
-    combined_df = combined_df.drop_duplicates(subset=['rrn'])
-    
+    combined_df = combined_df.drop_duplicates(subset=["rrn"])
+
     print(f"Total unique transactions loaded: {len(combined_df)}")
     return combined_df
+
 
 def process_excel_report(excel_path):
     """Processes Excel transaction report with custom column names or details parsing."""
@@ -273,8 +284,12 @@ def process_excel_report(excel_path):
     cfg = load_column_config()
 
     # First try explicit columns if present
-    rrn_col = _find_column(df, [cfg.get("rrn_column", "")]) or _find_column(df, ["rrn", "utr", "utr no", "utr number"])
-    amount_col = _find_column(df, [cfg.get("amount_column", "")]) or _find_column(df, AMOUNT_CANDIDATES)
+    rrn_col = _find_column(df, [cfg.get("rrn_column", "")]) or _find_column(
+        df, ["rrn", "utr", "utr no", "utr number"]
+    )
+    amount_col = _find_column(df, [cfg.get("amount_column", "")]) or _find_column(
+        df, AMOUNT_CANDIDATES
+    )
 
     if rrn_col and amount_col and rrn_col in df.columns and amount_col in df.columns:
         df_processed = df[[rrn_col, amount_col]].copy()
@@ -292,13 +307,18 @@ def process_excel_report(excel_path):
         f"Could not find RRN/UTR columns or a Details/Narration column in {excel_path}. Available columns: {list(df.columns)}"
     )
 
+
 def process_csv_report(csv_path):
     """Processes CSV transaction report with custom column names or details parsing."""
     df = pd.read_csv(csv_path)
     cfg = load_column_config()
 
-    rrn_col = _find_column(df, [cfg.get("rrn_column", "")]) or _find_column(df, ["rrn", "utr", "utr no", "utr number"])
-    amount_col = _find_column(df, [cfg.get("amount_column", "")]) or _find_column(df, AMOUNT_CANDIDATES)
+    rrn_col = _find_column(df, [cfg.get("rrn_column", "")]) or _find_column(
+        df, ["rrn", "utr", "utr no", "utr number"]
+    )
+    amount_col = _find_column(df, [cfg.get("amount_column", "")]) or _find_column(
+        df, AMOUNT_CANDIDATES
+    )
 
     if rrn_col and amount_col and rrn_col in df.columns and amount_col in df.columns:
         df_processed = df[[rrn_col, amount_col]].copy()
@@ -331,11 +351,14 @@ def process_pdf_report(pdf_path):
         try:
             import PyPDF2
         except ImportError:
-            raise ImportError("PDF processing requires either pdfplumber or PyPDF2. Install with: pip install pdfplumber")
-    
+            raise ImportError(
+                "PDF processing requires either pdfplumber or PyPDF2. Install with: pip install pdfplumber"
+            )
+
     # Try pdfplumber first (better table extraction)
     try:
         import pdfplumber
+
         with pdfplumber.open(pdf_path) as pdf:
             all_rows = []
             header = None
@@ -351,19 +374,22 @@ def process_pdf_report(pdf_path):
                 raise ValueError(f"No table data found in PDF: {pdf_path}")
             # Convert to DataFrame
             df = pd.DataFrame(all_rows, columns=header)
-            
+
     except (ImportError, Exception):
         # Fallback to PyPDF2 for text extraction
         import PyPDF2
-        with open(pdf_path, 'rb') as file:
+
+        with open(pdf_path, "rb") as file:
             reader = PyPDF2.PdfReader(file)
             text = ""
             for page in reader.pages:
                 text += page.extract_text()
-        
+
         # When only raw text is available, try to split the text into logical blocks
         # and extract UTR/amount pairs. We consider each occurrence of "UTR" as a new row.
-        blocks = re.split(r"(?i)\b(?:UTR\s*(?:No\.?|Number|#)?\s*[:\-]?\s*|Transaction ID\s*)", text)
+        blocks = re.split(
+            r"(?i)\b(?:UTR\s*(?:No\.?|Number|#)?\s*[:\-]?\s*|Transaction ID\s*)", text
+        )
         # The split drops the marker; rebuild by scanning for matches
         utrs = re.findall(r"(?i)UTR\s*(?:No\.?|Number|#)?\s*[:\-]?\s*([A-Z0-9]{8,22})", text)
         amts = re.findall(r"(?:₹|INR|Rs\.?)[\s]*([0-9][0-9,]*)", text)
@@ -374,7 +400,9 @@ def process_pdf_report(pdf_path):
             rows.append({"rrn": rrn, "amount": amt})
         df = pd.DataFrame(rows)
         if df.empty:
-            raise NotImplementedError("PDF text parsing did not find UTR numbers; please provide a sample file to tune parsing.")
+            raise NotImplementedError(
+                "PDF text parsing did not find UTR numbers; please provide a sample file to tune parsing."
+            )
 
     # At this point we have a DataFrame "df" from pdfplumber tables.
     cfg = load_column_config()
@@ -385,7 +413,7 @@ def process_pdf_report(pdf_path):
     if rrn_col and amount_col and rrn_col in df.columns and amount_col in df.columns:
         out = df[[rrn_col, amount_col]].copy()
         out.columns = ["rrn", "amount"]
-        out["rrn"] = pd.to_numeric(out["rrn"], errors='coerce').astype("Int64")
+        out["rrn"] = pd.to_numeric(out["rrn"], errors="coerce").astype("Int64")
         out["amount"] = out["amount"].apply(_clean_amount).astype("Int32")
         return out.dropna(subset=["rrn"])  # Ensure RRN exists
 
@@ -409,27 +437,25 @@ def process_pdf_report(pdf_path):
                 amount_col_hint=amount_col,
             )
 
-    raise ValueError(f"Could not identify RRN/UTR or Details columns in PDF table. Available columns: {list(df.columns)}")
+    raise ValueError(
+        f"Could not identify RRN/UTR or Details columns in PDF table. Available columns: {list(df.columns)}"
+    )
 
 
 def id_verification(input_df, report_df):
     """Verifies the extracted transaction IDs with the ones in report"""
     # Create set of valid RRNs from report (convert to strings for comparison)
     valid_rrns = set(report_df.dropna()["rrn"].astype(str).str.strip())
-    
+
     # Adding verified/not verified
     input_df["Verification"] = input_df["extracted_transaction_id"].apply(
         lambda rrn: (
-            "Verified"
-            if pd.notna(rrn) and str(rrn).strip() in valid_rrns
-            else "Not Verified"
+            "Verified" if pd.notna(rrn) and str(rrn).strip() in valid_rrns else "Not Verified"
         )
     )
 
     # Adding ID not found
-    input_df.loc[input_df["extracted_transaction_id"].isna(), "Verification"] = (
-        "No ID extracted"
-    )
+    input_df.loc[input_df["extracted_transaction_id"].isna(), "Verification"] = "No ID extracted"
 
     return input_df
 
@@ -456,7 +482,11 @@ def duplicate_check(input_df):
     verified_dataframe = read_verified_file()
 
     # Create set of verified RRNs as strings for comparison
-    verified_rrns = set(verified_dataframe["rrn"].astype(str).str.strip()) if not verified_dataframe.empty else set()
+    verified_rrns = (
+        set(verified_dataframe["rrn"].astype(str).str.strip())
+        if not verified_dataframe.empty
+        else set()
+    )
 
     # Identifying duplicates
     input_df["duplicate"] = input_df["extracted_transaction_id"].apply(
@@ -465,10 +495,10 @@ def duplicate_check(input_df):
 
     # Changing the "Verified" status of duplicates
     input_df.loc[input_df["duplicate"], "Verification"] = "Duplicate"
-    
+
     # Appending the non duplicate verified entries to the verified database
     append_verified(input_df, verified_dataframe)
-    
+
     input_df.drop(columns=["duplicate"], inplace=True)
 
     return input_df
@@ -476,36 +506,36 @@ def duplicate_check(input_df):
 
 def mismatch_check(input_df, report_df):
     """Checks for mismatch amount from the report"""
-    
+
     # Skip amount mismatch check if 'amount' column doesn't exist in input_df
     # This is normal since extracted data from screenshots typically doesn't include amounts
-    if 'amount' not in input_df.columns:
+    if "amount" not in input_df.columns:
         print("Skipping amount mismatch check - no amount data in extracted transactions")
         return input_df
-    
+
     # Create a lookup dictionary for report amounts for efficiency (using string keys)
-    report_amounts = dict(zip(report_df['rrn'].astype(str), report_df['amount']))
-    
+    report_amounts = dict(zip(report_df["rrn"].astype(str), report_df["amount"]))
+
     def check_amount_mismatch(row):
-        transaction_id = row['extracted_transaction_id']
+        transaction_id = row["extracted_transaction_id"]
         if pd.isna(transaction_id):
             return False
-        
+
         transaction_id_str = str(transaction_id).strip()
         if transaction_id_str not in report_amounts:
             return False
-        
-        input_amount = row.get('amount', None)
+
+        input_amount = row.get("amount", None)
         if pd.isna(input_amount):
             return False
-            
+
         report_amount = report_amounts[transaction_id_str]
         return input_amount != report_amount
-    
+
     # Apply the mismatch check
     input_df["amtVerify"] = input_df.apply(check_amount_mismatch, axis=1)
     input_df.loc[input_df["amtVerify"], "Verification"] = "Amount mismatch"
-    
+
     input_df.drop(columns=["amtVerify"], inplace=True)
     return input_df
 
@@ -514,10 +544,10 @@ def append_verified(input_df, verified_df):
     """Appends the unique verified IDs in input_df to verified_df and saves verified_df (csv or xlsx)"""
     # Get verified transactions that are NOT duplicates
     newly_verified_IDs = input_df.loc[
-        (input_df["Verification"] == "Verified") & (~input_df["duplicate"]), 
-        "extracted_transaction_id"
+        (input_df["Verification"] == "Verified") & (~input_df["duplicate"]),
+        "extracted_transaction_id",
     ]
-    
+
     if not newly_verified_IDs.empty:
         verified_df = pd.DataFrame(
             {
@@ -543,7 +573,7 @@ def save(output_df: pd.DataFrame):
 def main():
     # Input
     report_input = input_report()
-    
+
     # Determine which extracted data file exists
     extracted_data_path = None
     if os.path.exists("processed_transactions.xlsx"):
@@ -551,10 +581,12 @@ def main():
     elif os.path.exists("processed_transactions.csv"):
         extracted_data_path = "processed_transactions.csv"
     else:
-        raise FileNotFoundError("No processed transactions file found (processed_transactions.csv or processed_transactions.xlsx)")
-    
+        raise FileNotFoundError(
+            "No processed transactions file found (processed_transactions.csv or processed_transactions.xlsx)"
+        )
+
     # Read the extracted data file
-    if extracted_data_path.endswith('.xlsx'):
+    if extracted_data_path.endswith(".xlsx"):
         extracted_input = pd.read_excel(
             extracted_data_path,
             dtype={"extracted_transaction_id": str},
@@ -564,14 +596,18 @@ def main():
             extracted_data_path,
             dtype={"extracted_transaction_id": str},
         )
-    
+
     # Clean the extracted_transaction_id column
-    extracted_input["extracted_transaction_id"] = extracted_input["extracted_transaction_id"].replace('nan', None)
-    extracted_input["extracted_transaction_id"] = extracted_input["extracted_transaction_id"].replace('None', None)
-    
+    extracted_input["extracted_transaction_id"] = extracted_input[
+        "extracted_transaction_id"
+    ].replace("nan", None)
+    extracted_input["extracted_transaction_id"] = extracted_input[
+        "extracted_transaction_id"
+    ].replace("None", None)
+
     # Add amount column with proper dtype if it exists, otherwise skip amount verification
-    if 'amount' in extracted_input.columns:
-        extracted_input['amount'] = extracted_input['amount'].astype("Int32")
+    if "amount" in extracted_input.columns:
+        extracted_input["amount"] = extracted_input["amount"].astype("Int32")
     else:
         print("No amount column found in extracted data - amount verification will be skipped")
 
