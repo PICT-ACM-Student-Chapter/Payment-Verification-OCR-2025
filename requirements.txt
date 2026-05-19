@@ -24,9 +24,15 @@ huggingface_hub
 
 # Web UI framework
 streamlit>=1.28.0
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+python-multipart>=0.0.12
 
 # Image processing for UI
 Pillow>=9.0.0
+
+# Testing
+pytest>=8.3.0
 
 # JSON handling (built-in, but good to mention)
 # json (built-in)
